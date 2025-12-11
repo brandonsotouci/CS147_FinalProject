@@ -13,15 +13,30 @@ import cv2 as cv
 import numpy as np
 import threading
 import mediapipe as mp
-import pytesseract
+import enchant
+from PyDictionary import PyDictionary
 import easyocr
 from datetime import datetime
 import os 
+import string
+
+import asyncio
+from googletrans import Translator
+TRANSLATE_TO_LANGUAGE = 'es' # look at googletrans.languages
+LANGUAGE_TO_TRANSLATE = 'en'
+
+import nltk
+from nltk.corpus import wordnet
+# nltk.download('omw-1.4')  # Open Multilingual WordNet
+# nltk.download('wordnet')
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 last_coordinates = None
+
+
+
 
 def signal_handler(sig, frame):
     sys.exit(0)
@@ -32,81 +47,30 @@ def visualize_finger(current_frame, index_x_coordinate, index_y_coordinate):
     # cv.putText(current_frame, "INDEX", (index_x_coordinate + 25, index_y_coordinate), 
     #     cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
+async def translate(word, definition):
+    async with Translator() as translator:
+        word_translated = await translator.translate(word, src=LANGUAGE_TO_TRANSLATE, dest=TRANSLATE_TO_LANGUAGE)
+        definition_translated = await translator.translate(definition, src=LANGUAGE_TO_TRANSLATE, dest=TRANSLATE_TO_LANGUAGE)
+        print(f'{word_translated.text}: {definition_translated.text}')
+
+
+def define_word(word):
+    synsets = wordnet.synsets(word)
+    if synsets:
+        word_definition = synsets[0].definition()  # First definition
+        print(f'{word}: {word_definition}')
+        asyncio.run(translate(word, word_definition))
+    else:
+        print("Word not in dictionary. Seek other library")
+
+def clean_text(word):
+    return word.strip(string.punctuation)
 
 def is_index_extended(hand_landmarks):
     index_tip = hand_landmarks[8]
     index_mcp = hand_landmarks[5]
 
     return index_tip.y < index_mcp.y
-
-
-def is_pointing(hand_landmarks):
-    """
-    Detect if hand is pointing from any angle.
-    Checks if index finger is extended and roughly in line with hand direction.
-
-    Args:
-        hand_landmarks: List of 21 hand landmarks from MediaPipe
-
-    Returns:
-        bool: True if hand is pointing, False otherwise
-    """
-    # Landmark indices
-    WRIST = 0
-    INDEX_MCP = 5      # Index finger middle joint
-    INDEX_PIP = 6      # Index finger proximal joint
-    INDEX_TIP = 8      # Index finger tip
-    MIDDLE_MCP = 9     # Middle finger middle joint
-    MIDDLE_PIP = 10    # Middle finger proximal joint
-    MIDDLE_TIP = 12    # Middle finger tip
-
-    # Get coordinates
-    wrist = hand_landmarks[WRIST]
-    index_mcp = hand_landmarks[INDEX_MCP]
-    index_pip = hand_landmarks[INDEX_PIP]
-    index_tip = hand_landmarks[INDEX_TIP]
-    middle_pip = hand_landmarks[MIDDLE_PIP]
-    middle_tip = hand_landmarks[MIDDLE_TIP]
-
-    # Calculate distances
-    index_length = np.sqrt((index_tip.x - index_mcp.x)**2 +
-                          (index_tip.y - index_mcp.y)**2 +
-                          (index_tip.z - index_mcp.z)**2)
-
-    middle_length = np.sqrt((middle_tip.x - middle_pip.x)**2 +
-                           (middle_tip.y - middle_pip.y)**2 +
-                           (middle_tip.z - middle_pip.z)**2)
-
-    # Index finger should be extended (longer than middle finger)
-    if index_length < middle_length * 0.8:
-        return False
-
-    # Calculate vector from wrist to index tip
-    wrist_to_index = np.array([index_tip.x - wrist.x,
-                               index_tip.y - wrist.y,
-                               index_tip.z - wrist.z])
-
-    # Calculate vector from wrist to middle tip
-    wrist_to_middle = np.array([middle_tip.x - wrist.x,
-                                middle_tip.y - wrist.y,
-                                middle_tip.z - wrist.z])
-
-    # Calculate angle between vectors using dot product
-    dot_product = np.dot(wrist_to_index, wrist_to_middle)
-    mag1 = np.linalg.norm(wrist_to_index)
-    mag2 = np.linalg.norm(wrist_to_middle)
-
-    if mag1 == 0 or mag2 == 0:
-        return False
-
-    cos_angle = dot_product / (mag1 * mag2)
-    cos_angle = np.clip(cos_angle, -1.0, 1.0)
-    angle = np.arccos(cos_angle)
-    angle_degrees = np.degrees(angle)
-
-    # Index finger should be significantly separated from middle finger (> 30 degrees)
-    return angle_degrees > 30
-
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -159,6 +123,8 @@ options = GestureRecognizerOptions(
 )      
 
 reader = easyocr.Reader(['en'])
+EnchantDictEnglish = enchant.Dict("en_US")
+PyDict = PyDictionary()
 
 with GestureRecognizer.create_from_options(options) as recognizer:
     last_display_time = time.time()
@@ -213,12 +179,12 @@ with GestureRecognizer.create_from_options(options) as recognizer:
                     if frame_to_process.size > 0:
                         grayscaled = cv.cvtColor(frame_to_process, cv.COLOR_RGB2GRAY)
 
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-                        small_filepath = os.path.join("/home/humanic/CS147", f"roi_{timestamp}_200x200_AI.png")
-                        big_filepath = os.path.join("/home/humanic/CS147", f"roi_{timestamp}_full_AI.png")
+                        # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                        # small_filepath = os.path.join("/home/humanic/CS147", f"roi_{timestamp}_200x200_AI.png")
+                        # big_filepath = os.path.join("/home/humanic/CS147", f"roi_{timestamp}_full_AI.png")
 
-                        cv.imwrite(small_filepath, frame_to_process)
-                        cv.imwrite(big_filepath, current_frame)
+                        # cv.imwrite(small_filepath, frame_to_process)
+                        # cv.imwrite(big_filepath, current_frame)
 
                         contrast = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                         enhanced_box = contrast.apply(grayscaled)
@@ -226,16 +192,25 @@ with GestureRecognizer.create_from_options(options) as recognizer:
                         results = reader.readtext(frame_to_process)
                         text_processed = ""
 
+                        # The output will be in a list format, each item represents a bounding box, the text detected and confident level, respectively.
+                        # Ex. [([[189, 75], [469, 75], [469, 165], [189, 165]], 'Omomo', 0.3754989504814148)]
+
                         for detection in results:
                             text = detection[1]
                             text_processed += text + "\n"
 
-
-                        #text_processed = pytesseract.image_to_string(threshold_frame, config='--psm 6')
-
-                        #text = text_processed.strip()
                         if text_processed:
                             print("TEXT FOUND: ", text)
+                            word = clean_text(text)
+
+                            isValidWord = EnchantDictEnglish.check(word)
+
+                            if isValidWord:
+                                define_word(word)
+                            else:
+                                print(f"{word} IS NOT A VALID WORD")
+                        else:
+                            print("NO TEXT FOUND")
 
 
             cv.imshow('gesture_recognition', current_frame)
