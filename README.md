@@ -23,3 +23,6 @@ These packages then need to be linked within the venv with the following command
 `pip install -r requirements.txt`
 3. Install the picamera2 module with `apt` and create symlinks.
 4. Run ocr_main.py with `python3 ocr_main.py`
+
+## Disclaimer
+We used AI to debug our code and for finding Python packages suitable for our project.
