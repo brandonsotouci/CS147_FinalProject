@@ -1,5 +1,5 @@
 # Text Detection Human Helper
-
+This is our final project for UCI's CS 147 class.
 
 ## Parts Used
 - LCD Display with HDMI
